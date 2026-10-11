@@ -1,0 +1,3 @@
+#!/bin/sh
+# Sketch implementation is C++; no Arduino-generated prototypes are needed.
+exit 0

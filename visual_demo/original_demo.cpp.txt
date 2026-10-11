@@ -1,0 +1,93 @@
+#include <Arduino.h>
+#include <TFT_eSPI.h>
+#include <math.h>
+TFT_eSPI tft;
+TFT_eSprite frame(&tft);
+uint32_t frames = 0;
+
+uint16_t rainbow(float phase) {
+  return tft.color565(128 + 127 * sinf(phase),
+                      128 + 127 * sinf(phase + 2.094f),
+                      128 + 127 * sinf(phase + 4.189f));
+}
+
+void setup() {
+  Serial.begin(115200);
+  delay(1500);
+  Serial.println("Starting display initialization");
+  tft.init();
+  Serial.println("Display initialized");
+  tft.setRotation(0);
+  tft.fillScreen(TFT_BLACK);
+  frame.setColorDepth(16);
+  if (!frame.createSprite(160, 160)) {
+    Serial.println("ERROR: framebuffer allocation failed");
+    while (true) delay(1000);
+  }
+  frame.setTextDatum(MC_DATUM);
+  Serial.println("Visual demo ready: GC9D01 160x160, MOSI7 CLK6 CS5 DC4 RST8");
+}
+
+void loop() {
+  uint32_t started = millis();
+  float t = started / 1000.0f;
+  int scene = (started / 8000) % 3;
+  frame.fillSprite(tft.color565(3, 5, 14));
+  if (scene == 0) {
+    // A rainbow halo with orbiting lights, sized for the circular bezel.
+    for (int i = 0; i < 90; ++i) {
+      float a = i * 0.0698132f;
+      uint16_t color = rainbow(a - t);
+      frame.drawLine(80 + 65*cosf(a), 80 + 65*sinf(a),
+                     80 + 73*cosf(a), 80 + 73*sinf(a), color);
+    }
+    for (int i = 0; i < 6; ++i) {
+      float a = t * 0.9f + i * 1.0472f;
+      frame.fillCircle(80 + 47*cosf(a), 80 + 47*sinf(a), 5, rainbow(a));
+    }
+    frame.setTextColor(TFT_WHITE);
+    frame.drawString("HELLO", 80, 70, 4);
+    frame.setTextColor(TFT_CYAN);
+    frame.drawString("ESP32-C3", 80, 96, 2);
+  } else if (scene == 1) {
+    // A friendly eye that looks around and blinks periodically.
+    float blink = fmodf(t, 3.7f);
+    int opening = blink < 0.18f ? 3 + 47 * fabsf(blink - 0.09f)/0.09f : 50;
+    int x = 80 + 17*sinf(t*1.2f), y = 80 + 10*sinf(t*0.7f);
+    frame.fillEllipse(80, 80, 70, opening, TFT_WHITE);
+    frame.fillCircle(x, y, 31, TFT_CYAN);
+    for (int i=0; i<40; ++i) {
+      float a = i * 0.15708f;
+      frame.drawLine(x+17*cosf(a), y+17*sinf(a), x+29*cosf(a), y+29*sinf(a), TFT_BLUE);
+    }
+    frame.fillCircle(x, y, 16, TFT_BLACK);
+    frame.fillCircle(x-8, y-10, 6, TFT_WHITE);
+    // Mask the iris and pupil outside the eyelid opening.
+    for (int row=0; row<160; ++row) {
+      float dy = (row-80)/(float)opening;
+      int extent = fabsf(dy) < 1 ? 70*sqrtf(1-dy*dy) : 0;
+      frame.drawFastHLine(0, row, 80-extent, tft.color565(3,5,14));
+      frame.drawFastHLine(80+extent, row, 80-extent, tft.color565(3,5,14));
+    }
+  } else {
+    // Colorful animated waveforms and a moving particle field.
+    for (int i=0; i<28; ++i) {
+      float a = i*2.39996f + t*0.15f;
+      float r = fmodf(i*13.0f+t*12, 75);
+      frame.fillCircle(80+r*cosf(a), 80+r*sinf(a), 1, rainbow(a));
+    }
+    for (int band=0; band<4; ++band) {
+      uint16_t color = rainbow(t*0.5f+band*1.4f);
+      for (int x=15; x<145; ++x) {
+        int y = 80 + 22*sinf(x*0.06f+t*2+band*0.7f) + (band-2)*9;
+        frame.fillCircle(x,y,1,color);
+      }
+    }
+    frame.setTextColor(TFT_WHITE);
+    frame.drawString("COLOR WAVES", 80, 123, 2);
+  }
+  frame.pushSprite(0,0);
+  if (++frames % 150 == 0) Serial.printf("Running: scene=%d frames=%lu uptime=%lus\n", scene, (unsigned long)frames, (unsigned long)(started/1000));
+  int elapsed = millis()-started;
+  if (elapsed < 33) delay(33-elapsed);
+}

@@ -1,0 +1,33 @@
+{
+  "name": "spaceeye",
+  "main": "worker.js",
+  "compatibility_date": "2026-10-11",
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "ROOM",
+        "class_name": "SpaceRoom"
+      }
+    ]
+  },
+  "observability": {
+    "enabled": true,
+    "traces": {
+      "enabled": true
+    }
+  },
+  "routes": [
+    {
+      "pattern": "spaceeye.atlesque.dev",
+      "custom_domain": true
+    }
+  ],
+  "account_id": "df08931372f873bc0c8edb7679dc0cf4",
+  "exports": {
+    "SpaceRoom": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    }
+  },
+  "workers_dev": false
+}

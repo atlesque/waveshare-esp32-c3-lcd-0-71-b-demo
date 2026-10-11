@@ -1,0 +1,18 @@
+{
+  "name": "spaceeye",
+  "version": "1.0.0",
+  "description": "Four-player browser spaceship arena mirrored on a Waveshare LCD",
+  "main": "worker.js",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node build.mjs && node test.mjs",
+    "deploy": "node build.mjs && wrangler deploy"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "devDependencies": {
+    "wrangler": "^4.149.0"
+  }
+}
