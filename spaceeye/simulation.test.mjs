@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { newWorld, newShip, advanceWorld, fireAction, MAX_PROJECTILES } from './simulation.mjs';
+import { newWorld, newShip, advanceWorld, fireAction, steerBot, MAX_PROJECTILES } from './simulation.mjs';
 function ship(slot, x, y, a = 0) { return { ...newShip(slot, 0), x, y, a, shieldUntil: 0 }; }
 function run(world, ships, until) { for (let now = world.last + 20; now <= until; now += 20) advanceWorld(world, ships, now); }
 {
@@ -51,4 +51,12 @@ function run(world, ships, until) { for (let now = world.last + 20; now <= until
   run(world, [s], 380); const fired = s.ready.gun;
   run(world, [s], 700); assert.equal(s.ready.gun, fired, 'stale input stops firing');
 }
-console.log('PASS: gun hits, kill credit, respawn shields, guided missiles, photon splash, warp bounds/cooldowns, projectile limits, stale input');
+{
+  const world = newWorld(0), bot = { ...ship(1, 80, 80, Math.PI / 2), bot: true }, human = ship(0, 110, 80);
+  steerBot(world, [human, bot], bot, 0);
+  assert.equal(bot.input.left, true, 'AI pilot turns towards its target');
+  run(world, [human, bot], 3000);
+  assert.ok(human.hp < 100 || human.deaths > 0, 'AI pilot attacks the nearest opponent');
+  assert.ok(world.projectiles.every(p => p.owner === 1) && bot.inputAt === 3000, 'AI pilot keeps steering itself');
+}
+console.log('PASS: AI steering and attacks, gun hits, kill credit, respawn shields, guided missiles, photon splash, warp bounds/cooldowns, projectile limits, stale input');

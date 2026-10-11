@@ -2,7 +2,7 @@
 
 Live game: https://spaceeye.atlesque.dev
 
-Open the same address on up to four devices and select **Take a ship**. Arrow keys or WASD control rotation, thrust and braking; touch buttons support simultaneous holds. The fifth visitor can watch until a seat opens. **Leave ship** releases a seat. A disconnected browser reconnects automatically and can join again.
+Open the same address on up to four devices and select **Take a ship**. Arrow keys or WASD control rotation, thrust and braking; touch buttons support simultaneous holds. While at least one human is flying, AI pilots fill every empty seat; a joining human takes over an AI ship with a fresh hull, and AI pilots leave with the last human. The fifth human visitor can watch until a seat opens. **Leave ship** releases a seat, which an AI pilot refills if other humans remain. A disconnected browser reconnects automatically and can join again.
 
 All pilots share the `lcd-arena-v4` Durable Object in the `spaceeye` Cloudflare Worker. Movement is computed on the server and broadcast over WebSockets. Ships collide with each other and bounce with a small energy loss. Crossing the circular map boundary wraps a ship to the opposite side, preserving its heading, velocity and distance travelled past the edge. Physics uses small steps to prevent fast ships passing through each other. A pilot’s thrust expires after 350 ms without input. Socket attachments preserve active ship state across hibernation; positions are ephemeral and disappear when pilots leave. No account is needed to play.
 
@@ -17,7 +17,7 @@ The Waveshare firmware joins the configured 2.4 GHz Wi-Fi, synchronizes time for
 | Photon torpedo | T / Photon torpedo | 40 damage within an 18-unit blast radius | 2.5 s |
 | Warp drive | Shift / Warp drive | Jumps 45 units forward, wraps at the boundary, brief shield | 5 s |
 
-Ships have 100 hull points. Destruction credits a kill and respawns the ship after 1.5 seconds with two seconds of protection. Firing ends spawn protection. Cooldowns and damage are enforced by the server. Projectiles expire at the edge; ships and warp jumps wrap. The browser and LCD show rounds, missiles, photon blasts, shields and warp effects. The browser also shows hull, kills and recharge times.
+Ships have 100 hull points. Destruction credits a kill and respawns the ship after 1.5 seconds with two seconds of protection. Firing ends spawn protection. Cooldowns and damage are enforced by the server. AI pilots chase the nearest opponent, fire guns when lined up and launch missiles and photon torpedoes on the same cooldowns; they are marked AI in the browser. Projectiles expire at the edge; ships and warp jumps wrap. The browser and LCD show rounds, missiles, photon blasts, shields and warp effects. The browser also shows hull, kills and recharge times.
 
 The current firmware reads the existing JSON WebSocket state, including ship velocity and missile targets. It extrapolates movement, inferred turning, acceleration, damping, collisions and map wrapping in 10 ms steps for at most 250 ms after each update. Guns, missiles and photon shots advance locally at the server’s speeds; missiles home and predicted impacts hide shots without changing authoritative health or kills. Each new state replaces predictions; warps and respawns take effect from the server. Effects age locally. The LCD sends an application heartbeat each second, maintaining the browser’s LCD LIVE indicator without HTTP polling.
 

@@ -8,26 +8,44 @@ export class SpaceRoom extends DurableObject {
     this.ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS arena_world (id INTEGER PRIMARY KEY, value TEXT NOT NULL)');
     const saved = this.ctx.storage.sql.exec('SELECT value FROM arena_world WHERE id = 1').toArray()[0];
     this.world = saved ? JSON.parse(saved.value) : newWorld(Date.now());
+    this.world.bots ??= [];
     this.savedActive = !!saved; this.lcdAt = 0;
+  }
+  humans(sessions = this.sessions()) { return sessions.map(s => s.data).filter(s => s.slot !== null); }
+  pilots(sessions = this.sessions()) { return [...this.humans(sessions), ...this.world.bots]; }
+  // AI pilots fill every open seat while at least one human is flying, and the
+  // arena empties when the last human leaves.
+  syncBots(sessions, now) {
+    const humans = this.humans(sessions), taken = humans.map(s => s.slot);
+    const keep = humans.length ? this.world.bots.filter(b => !taken.includes(b.slot)) : [];
+    const removed = this.world.bots.filter(b => !keep.includes(b)).map(b => b.slot);
+    if (removed.length) this.world.projectiles = this.world.projectiles.filter(p => !removed.includes(p.owner));
+    this.world.bots = keep;
+    if (!humans.length) return;
+    for (const slot of [0, 1, 2, 3]) {
+      if (!taken.includes(slot) && !keep.some(b => b.slot === slot)) keep.push({ ...newShip(slot, now), bot: true });
+    }
+    keep.sort((a, b) => a.slot - b.slot);
   }
   sessions() { return this.ctx.getWebSockets().filter(ws => ws.readyState === 1).map(ws => ({ ws, data: ws.deserializeAttachment() })); }
   save(sessions) {
     for (const { ws, data } of sessions) ws.serializeAttachment(data);
-    const active = this.world.projectiles.length > 0 || this.world.effects.length > 0;
+    const active = this.world.projectiles.length > 0 || this.world.effects.length > 0 || this.world.bots.length > 0;
     if (active) this.ctx.storage.sql.exec('INSERT OR REPLACE INTO arena_world (id, value) VALUES (1, ?)', JSON.stringify(this.world));
     else if (this.savedActive) this.ctx.storage.sql.exec('DELETE FROM arena_world WHERE id = 1');
     this.savedActive = active;
   }
   advance() {
-    const sessions = this.sessions();
-    advanceWorld(this.world, sessions.map(s => s.data).filter(s => s.slot !== null), Date.now());
+    const sessions = this.sessions(), now = Date.now();
+    this.syncBots(sessions, now);
+    advanceWorld(this.world, this.pilots(sessions), now);
     this.save(sessions);
   }
   state() {
     const now = Date.now();
     return { type: 'state', physics: 'collisions-wrap-v1', now, lcdAt: this.lcdAt, projectiles: this.world.projectiles, effects: this.world.effects,
-      ships: this.sessions().map(s => s.data).filter(s => s.slot !== null).map(s => ({
-        slot: s.slot, x: s.x, y: s.y, a: s.a, vx: s.vx, vy: s.vy, thrust: s.thrust,
+      ships: this.pilots().sort((a, b) => a.slot - b.slot).map(s => ({
+        slot: s.slot, bot: !!s.bot, x: s.x, y: s.y, a: s.a, vx: s.vx, vy: s.vy, thrust: s.thrust,
         hp: s.hp, kills: s.kills, deaths: s.deaths, shield: now < s.shieldUntil,
         hit: now < s.hitUntil, warp: now < s.warpUntil,
         respawnMs: Math.max(0, s.respawnAt - now),
@@ -86,18 +104,21 @@ export class SpaceRoom extends DurableObject {
     this.advance(); s = ws.deserializeAttachment(); s.lastMessage = now;
     if (s.lcd) this.lcdAt = now;
     if (m.type === 'join' && s.slot === null) {
-      const used = this.state().ships.map(s => s.slot), slot = [0, 1, 2, 3].find(i => !used.includes(i));
+      // A human takes a free seat, or otherwise replaces an AI pilot.
+      const used = this.humans().map(s => s.slot), open = [0, 1, 2, 3].filter(i => !used.includes(i));
+      const slot = open.find(i => !this.world.bots.some(b => b.slot === i)) ?? open[0];
       if (slot === undefined) { ws.send(JSON.stringify({ type: 'error', message: 'All four seats are taken.' })); return; }
       s = { ...s, ...newShip(slot, now) }; ws.serializeAttachment(s);
+      this.syncBots(this.sessions(), now); this.save(this.sessions());
       ws.send(JSON.stringify({ type: 'joined', slot })); this.broadcast(); return;
     }
     if (m.type === 'leave') {
       this.world.projectiles = this.world.projectiles.filter(p => p.owner !== s.slot);
-      s.slot = null; s.input = {}; ws.serializeAttachment(s); this.save(this.sessions()); this.broadcast(); return;
+      s.slot = null; s.input = {}; ws.serializeAttachment(s); this.syncBots(this.sessions(), now); this.save(this.sessions()); this.broadcast(); return;
     }
     if (m.type === 'action' && s.slot !== null) {
       if (!['gun', 'missile', 'photon', 'warp'].includes(m.action)) return;
-      const accepted = fireAction(this.world, this.sessions().map(s => s.data).filter(s => s.slot !== null), s, m.action, now);
+      const accepted = fireAction(this.world, this.pilots(), s, m.action, now);
       ws.send(JSON.stringify({ type: 'action', action: m.action, accepted }));
     }
     if (m.type === 'input' && s.slot !== null) {
@@ -107,7 +128,7 @@ export class SpaceRoom extends DurableObject {
   }
   release(ws) {
     const s = ws.deserializeAttachment(); this.world.projectiles = this.world.projectiles.filter(p => p.owner !== s.slot);
-    s.slot = null; ws.serializeAttachment(s); this.save(this.sessions()); this.broadcast();
+    s.slot = null; ws.serializeAttachment(s); this.syncBots(this.sessions(), Date.now()); this.save(this.sessions()); this.broadcast();
   }
   webSocketClose(ws, code, reason) { this.release(ws); ws.close(code, reason); }
   webSocketError(ws) { this.release(ws); ws.close(1011, 'Connection error'); }

@@ -13,25 +13,25 @@ function clearControls() {
   send({ type: 'input', ...input });
 }
 function ui() {
-  const me = ships.find(s => s.slot === slot), age = Date.now() - stateAt;
+  const me = ships.find(s => s.slot === slot), age = Date.now() - stateAt, humans = ships.filter(s => !s.bot).length;
   $('network').textContent = connected ? '● Connected' : '○ Reconnecting…';
-  $('join').disabled = !connected || ships.length >= 4;
+  $('join').disabled = !connected || humans >= 4;
   $('join').hidden = slot !== null; $('leave').hidden = slot === null;
   $('identity').textContent = slot === null ? 'Ready for launch?' : names[slot] + ' · Pilot ' + (slot + 1);
   $('identity').style.color = slot === null ? '' : colors[slot];
   $('message').textContent = slot === null
-    ? (ships.length >= 4 ? 'All four ships are flying. Watch here until a seat opens.' : 'Join from any phone or computer. Four seats, one shared sky.')
+    ? (humans >= 4 ? 'All four ships are flying. Watch here until a seat opens.' : humans ? 'Join to take over an AI ship. Four seats, one shared sky.' : 'Join from any phone or computer. AI pilots fill the empty seats.')
     : (me?.hp === 0 ? 'Ship destroyed. Respawning in ' + (Math.max(0, me.respawnMs - age) / 1000).toFixed(1) + 's…'
       : Date.now() < feedbackUntil ? feedback : 'Fly, fight, and jump. Hold guns to fire; heavier weapons recharge.');
   $('hull').hidden = slot === null;
   $('hull-label').textContent = 'HULL ' + (me?.hp ?? 100) + '% · ' + (me?.kills ?? 0) + ' KILLS';
   $('hull-meter').value = me?.hp ?? 100;
-  $('count').textContent = ships.length + ' / 4 PILOTS';
+  $('count').textContent = humans + ' / 4 PILOTS' + (ships.length > humans ? ' · ' + (ships.length - humans) + ' AI' : '');
   $('lcd').textContent = Date.now() - lcdAt < 5000 ? 'LCD · LIVE' : 'LCD · OFFLINE';
   $('pilots').innerHTML = names.map((n, i) => {
     const s = ships.find(s => s.slot === i);
     return '<div class="pilot"><span><i class="dot" style="background:' + colors[i] + '"></i>' + n + '</span><span>'
-      + (s ? (slot === i ? 'YOU · ' : '') + s.hp + '%<small>' + s.kills + ' kills' + (s.hp === 0 ? ' · respawning' : '') + '</small>' : 'OPEN SEAT') + '</span></div>';
+      + (s ? (slot === i ? 'YOU · ' : s.bot ? 'AI · ' : '') + s.hp + '%<small>' + s.kills + ' kills' + (s.hp === 0 ? ' · respawning' : '') + '</small>' : 'OPEN SEAT') + '</span></div>';
   }).join('');
   document.querySelectorAll('[data-control]').forEach(b => b.disabled = !connected || slot === null || me?.hp === 0);
   const hints = { missile: 'M · GUIDED', photon: 'T · SPLASH DAMAGE', warp: 'SHIFT · JUMP' };
@@ -123,7 +123,7 @@ function draw(t) {
     c.beginPath(); c.moveTo(20, 0); c.lineTo(-13, -11); c.lineTo(-7, 0); c.lineTo(-13, 11); c.closePath(); c.fill();
     c.shadowBlur = 0; c.fillStyle = '#f7ffff'; c.beginPath(); c.arc(1, 0, 3, 0, 7); c.fill(); c.restore();
     c.fillStyle = colors[s.slot]; c.font = '12px monospace'; c.textAlign = 'center';
-    c.fillText(names[s.slot].toUpperCase() + (slot === s.slot ? ' / YOU' : ''), s.x * 5, s.y * 5 + 33);
+    c.fillText(names[s.slot].toUpperCase() + (slot === s.slot ? ' / YOU' : s.bot ? ' / AI' : ''), s.x * 5, s.y * 5 + 33);
     c.fillStyle = '#27394d'; c.fillRect(s.x * 5 - 17, s.y * 5 + 39, 34, 3);
     c.fillStyle = s.hp > 30 ? colors[s.slot] : '#ff789a'; c.fillRect(s.x * 5 - 17, s.y * 5 + 39, 34 * s.hp / 100, 3);
   }
