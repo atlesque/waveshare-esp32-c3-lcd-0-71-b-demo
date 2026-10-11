@@ -16,6 +16,19 @@ try{
  assert.ok((await (await mf.dispatchFetch(base+'/state')).json()).lcdAt>firstDisplayState.lcdAt);
  assert.equal('lcdAt' in refreshedDisplayState,false,'LCD stream omits browser-only metadata');
  display.ws.close();clients.pop();await delay(50);
+ // AI pilots fill open seats once a human flies, give way to joining humans and leave with the last human.
+ const getState=async()=>(await mf.dispatchFetch(base+'/state')).json();
+ assert.equal((await getState()).ships.length,0,'no AI pilots without humans');
+ const first=await connect();await wait(first,'welcome');first.ws.send(JSON.stringify({type:'join'}));assert.equal((await wait(first,'joined')).slot,0);
+ let lobby=await getState();assert.deepEqual(lobby.ships.map(s=>[s.slot,s.bot]),[[0,false],[1,true],[2,true],[3,true]]);
+ const second=await connect();await wait(second,'welcome');second.ws.send(JSON.stringify({type:'join'}));assert.equal((await wait(second,'joined')).slot,1,'joining human replaces an AI pilot');
+ lobby=await getState();assert.deepEqual(lobby.ships.map(s=>[s.slot,s.bot]),[[0,false],[1,false],[2,true],[3,true]]);
+ assert.equal(lobby.ships.find(s=>s.slot===1).hp,100,'replacement starts with a fresh ship');
+ second.ws.send(JSON.stringify({type:'leave'}));await delay(50);
+ assert.deepEqual((await getState()).ships.map(s=>s.bot),[false,true,true,true],'AI pilot refills a vacated seat');
+ first.ws.close();await delay(50);
+ assert.equal((await getState()).ships.length,0,'AI pilots leave with the last human');
+ second.ws.close();clients.length=0;await delay(50);
  for(let i=0;i<5;i++){const c=await connect();await wait(c,'welcome');c.ws.send(JSON.stringify({type:'join'}));const m=await wait(c,i===4?'error':'joined');if(i<4)assert.equal(m.slot,i)}
  let state=await (await mf.dispatchFetch(base+'/state')).json();assert.equal(state.ships.length,4);
  const start=state.ships.find(s=>s.slot===0);
@@ -48,5 +61,5 @@ try{
  pilot.ws.send(JSON.stringify({type:'input',gun:true})); await delay(65);
  pilot.ws.send(JSON.stringify({type:'input',gun:true})); await delay(65);
  assert.ok((await (await mf.dispatchFetch(base+'/state')).json()).ships.find(s=>s.slot===0).cooldowns.gun>0,'held gun input reaches server even at arena boundary');
- console.log('PASS: four-player limit, movement, LCD protocol, slot reuse, origin validation, malformed input, weapon actions/cooldowns, warp, combat LCD protocol, spectator controls');
+ console.log('PASS: AI fill and takeover, four-player limit, movement, LCD protocol, slot reuse, origin validation, malformed input, weapon actions/cooldowns, warp, combat LCD protocol, spectator controls');
 }finally{for(const c of clients)c.ws.close();await mf.dispose()}

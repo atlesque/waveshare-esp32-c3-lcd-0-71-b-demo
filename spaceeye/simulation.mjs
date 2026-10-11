@@ -7,13 +7,32 @@ export const WEAPONS = {
 };
 export const MAX_PROJECTILES = 24;
 export const MAX_EFFECTS = 8;
-export function newWorld(now) { return { last: now, nextId: 1, projectiles: [], effects: [] }; }
+export function newWorld(now) { return { last: now, nextId: 1, projectiles: [], effects: [], bots: [] }; }
 export function newShip(slot, now) {
   const a = slot * Math.PI / 2;
   return { slot, x: 80 + 35 * Math.cos(a), y: 80 + 35 * Math.sin(a), a: a + Math.PI / 2,
     vx: 0, vy: 0, hp: 100, kills: 0, deaths: 0, shieldUntil: now + 2000,
     respawnAt: 0, hitUntil: 0, warpUntil: 0, ready: { gun: 0, missile: 0, photon: 0, warp: 0 },
     input: {}, inputAt: 0, thrust: false };
+}
+
+// AI pilots chase the nearest opponent, fire guns when lined up and use heavier
+// weapons when their cooldowns allow. They reuse the human input model, so physics
+// and weapons treat them exactly like any other ship.
+export function steerBot(world, ships, bot, now) {
+  const target = ships.filter(s => s.slot !== bot.slot && s.hp > 0)
+    .sort((a, b) => Math.hypot(a.x - bot.x, a.y - bot.y) - Math.hypot(b.x - bot.x, b.y - bot.y))[0];
+  bot.inputAt = now;
+  if (!target) { bot.input = { thrust: Math.hypot(bot.x - 80, bot.y - 80) > 30, right: true }; return; }
+  const distance = Math.hypot(target.x - bot.x, target.y - bot.y);
+  const delta = Math.atan2(Math.sin(Math.atan2(target.y - bot.y, target.x - bot.x) - bot.a),
+    Math.cos(Math.atan2(target.y - bot.y, target.x - bot.x) - bot.a));
+  const aligned = Math.abs(delta) < 0.25;
+  bot.input = { left: delta < -0.08, right: delta > 0.08, thrust: Math.abs(delta) < 0.8 && distance > 25,
+    brake: distance < 14, gun: aligned && distance < 50 && now >= target.shieldUntil };
+  if (now < target.shieldUntil) return;
+  if (aligned && distance < 40 && now >= bot.ready.photon) fireAction(world, ships, bot, 'photon', now);
+  else if (distance < 60 && now >= bot.ready.missile + 1500) fireAction(world, ships, bot, 'missile', now);
 }
 
 function effect(world, kind, x, y, slot, now) {
@@ -60,6 +79,7 @@ function step(world, ships, now, dt) {
     }
   }
   const activeShips = ships.filter(s => s.hp > 0);
+  for (const s of activeShips) if (s.bot) steerBot(world, ships, s, now);
   advanceShips(activeShips, dt, now);
   for (const s of activeShips) {
     const input = now - s.inputAt < 350 ? s.input : {};
