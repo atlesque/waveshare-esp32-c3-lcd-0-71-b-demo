@@ -5,7 +5,7 @@
   "main": "worker.js",
   "scripts": {
     "build": "node build.mjs",
-    "test": "node build.mjs && node test.mjs",
+    "test": "node physics.test.mjs && node build.mjs && node simulation.test.mjs && node test.mjs",
     "deploy": "node build.mjs && wrangler deploy"
   },
   "keywords": [],

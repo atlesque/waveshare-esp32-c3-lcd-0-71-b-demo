@@ -1,10 +1,134 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#080d19"><title>Spaceeye · Four pilots, one tiny universe</title><style>
 *{box-sizing:border-box}body{margin:0;background:#080d19;color:#e9f2ff;font-family:system-ui,sans-serif}main{max-width:1150px;margin:auto;padding:30px 25px}header{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #253044;padding-bottom:20px}.brand{font-size:23px;font-weight:800;letter-spacing:3px}.brand span{color:#70e7da}.tag{font-size:11px;letter-spacing:2px;color:#91a4bd}.status{font-size:12px;color:#95a7be}.layout{display:grid;grid-template-columns:1fr 300px;gap:45px;margin-top:34px}h1{font-size:clamp(30px,4vw,46px);letter-spacing:-2px;margin:8px 0 12px}p{color:#91a4bd;line-height:1.6}.arena{width:100%;max-width:650px;display:block;aspect-ratio:1;touch-action:none}.panel{border:1px solid #253044;background:#0e1523;border-radius:18px;padding:24px;align-self:center}.eyebrow{color:#70e7da;font-size:11px;letter-spacing:2px}h2{font-size:22px;margin:14px 0}button{font:inherit;cursor:pointer;background:#70e7da;color:#07131c;border:0;border-radius:10px;padding:14px 18px;font-weight:700}button:disabled{opacity:.45;cursor:default}.primary{width:100%}.secondary{background:#1e293c;color:#dbe7fa;margin-top:10px;width:100%}.pilots{margin:24px 0}.pilot{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #243046;padding:13px 0;font-size:13px}.dot{display:inline-block;width:8px;height:8px;border-radius:100%;margin-right:10px}.controls{display:flex;gap:10px;margin-top:20px}.controls button{flex:1;background:#1d2b40;color:white;font-size:22px;touch-action:none;user-select:none;min-height:62px}.controls button.active{background:#70e7da;color:#07131c}small{font-size:12px;color:#91a4bd;line-height:1.6;display:block;margin-top:14px}.telemetry{display:flex;justify-content:space-between;font:11px monospace;letter-spacing:1px;color:#778ca9;margin:12px 0}footer{margin-top:26px;border-top:1px solid #253044;padding-top:18px;font-size:11px;letter-spacing:1px;color:#657b99}a{color:#70e7da}:focus-visible{outline:3px solid white;outline-offset:3px}@media(max-width:800px){main{padding:20px 18px}.layout{grid-template-columns:1fr;gap:16px;margin-top:22px}.panel{padding:20px}.arena{max-width:480px;margin:auto}.tag{display:none}h1{margin-top:5px}.pilots{display:grid;grid-template-columns:1fr 1fr;gap:0 20px;margin:15px 0}}
-</style></head><body><main><header><div class="brand">SPACE<span>EYE</span></div><div class="tag">FOUR PILOTS · ONE TINY UNIVERSE</div><div class="status" id="network" role="status">Connecting…</div></header><div class="layout"><section><div class="eyebrow">LIVE ORBIT / ATLESQUE</div><h1>Your universe. In miniature.</h1><p>Take a ship. Explore together. Every move lands on the tiny LCD.</p><canvas class="arena" id="arena" width="800" height="800" aria-label="Live shared space arena with up to four ships"></canvas><div class="telemetry"><span id="count">0 / 4 PILOTS</span><span id="lcd">LCD · WAITING</span><span>SECTOR 001</span></div></section><aside class="panel"><div class="eyebrow">FLIGHT DECK</div><h2 id="identity">Ready for launch?</h2><p id="message" role="status">Join from any phone or computer. Four seats, one shared sky.</p><button class="primary" id="join" disabled>Take a ship →</button><button class="secondary" id="leave" hidden>Leave ship</button><div class="pilots" id="pilots"></div><div class="eyebrow">MANUAL CONTROLS</div><div class="controls"><button aria-label="Turn left" data-control="left">↶</button><button aria-label="Thrust" data-control="thrust">↑</button><button aria-label="Turn right" data-control="right">↷</button><button aria-label="Brake" data-control="brake">■</button></div><small>← → or A / D to turn<br>↑ or W to thrust · ↓ or S to brake<br>On mobile, hold the flight buttons.</small><small>Invite your crew: <a href="/">spaceeye.atlesque.dev</a></small></aside></div><footer>ATLESQUE EXPERIMENTS &nbsp; / &nbsp; A SMALL WINDOW INTO A SHARED WORLD</footer></main><script>
-const $=id=>document.getElementById(id),colors=['#70e7da','#fbb969','#bc9cff','#ff789a'],names=['Comet','Nova','Orbit','Pulsar'];let ws,slot=null,ships=[],connected=false,stateAt=0,lcdAt=0;const input={left:false,right:false,thrust:false,brake:false},held=new Set();let retry=500;
-function send(value){if(ws?.readyState===1)ws.send(JSON.stringify(value))}function clearControls(){held.clear();for(const k in input)input[k]=false;document.querySelectorAll('[data-control]').forEach(b=>b.classList.remove('active'));send({type:'input',...input})}
-function ui(){ $('network').textContent=connected?'● Connected':'○ Reconnecting…';$('join').disabled=!connected||ships.length>=4;$('join').hidden=slot!==null;$('leave').hidden=slot===null;$('identity').textContent=slot===null?'Ready for launch?':names[slot]+' · Pilot '+(slot+1);$('identity').style.color=slot===null?'':colors[slot];$('message').textContent=slot===null?(ships.length>=4?'All four ships are flying. Watch here until a seat opens.':'Join from any phone or computer. Four seats, one shared sky.'):'You have the controls. Hold thrust to move, turn to explore.';$('count').textContent=ships.length+' / 4 PILOTS';$('lcd').textContent=Date.now()-lcdAt<5000?'LCD · LIVE':'LCD · OFFLINE';$('pilots').innerHTML=names.map((n,i)=>'<div class="pilot"><span><i class="dot" style="background:'+colors[i]+'"></i>'+n+'</span><span>'+ (ships.some(s=>s.slot===i)?(slot===i?'YOU':'IN FLIGHT'):'OPEN SEAT')+'</span></div>').join('')}
-function connect(){ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws');ws.onopen=()=>{connected=true;retry=500;ui()};ws.onmessage=e=>{const m=JSON.parse(e.data);if(m.type==='welcome'||m.type==='joined'){slot=m.slot;ui()}if(m.type==='state'){ships=m.ships;stateAt=Date.now();lcdAt=m.lcdAt;ui()}if(m.type==='error'){$('message').textContent=m.message}};ws.onclose=()=>{connected=false;slot=null;clearControls();ui();setTimeout(connect,retry);retry=Math.min(8000,retry*2)};ws.onerror=()=>ws.close()}
-$('join').onclick=()=>send({type:'join'});$('leave').onclick=()=>{clearControls();send({type:'leave'});slot=null;ui()};const keyMap={ArrowLeft:'left',a:'left',ArrowRight:'right',d:'right',ArrowUp:'thrust',w:'thrust',ArrowDown:'brake',s:'brake'};function update(){for(const k in input)input[k]=[...held].some(v=>keyMap[v]===k||v===k);document.querySelectorAll('[data-control]').forEach(b=>b.classList.toggle('active',input[b.dataset.control]))}window.onkeydown=e=>{const key=e.key.length===1?e.key.toLowerCase():e.key;if(keyMap[key]&&slot!==null){e.preventDefault();held.add(key);update()}};window.onkeyup=e=>{held.delete(e.key.length===1?e.key.toLowerCase():e.key);update()};window.onblur=clearControls;document.addEventListener('visibilitychange',()=>{if(document.hidden)clearControls()});document.querySelectorAll('[data-control]').forEach(b=>{b.onpointerdown=e=>{e.preventDefault();b.setPointerCapture(e.pointerId);held.add(b.dataset.control);update()};b.onpointerup=b.onpointercancel=b.onlostpointercapture=()=>{held.delete(b.dataset.control);update()}});setInterval(()=>{if(connected&&slot!==null)send({type:'input',...input})},50);setInterval(()=>{if(connected)send({type:'ping'});ui()},2000);
-const c=$('arena').getContext('2d');const stars=Array.from({length:95},(_,i)=>({x:((i*73+17)%800),y:((i*137+41)%800),r:i%5===0?2:1}));function draw(t){c.clearRect(0,0,800,800);c.save();c.beginPath();c.arc(400,400,365,0,Math.PI*2);c.clip();const g=c.createRadialGradient(360,320,0,400,400,400);g.addColorStop(0,'#152a3d');g.addColorStop(.6,'#0d182b');g.addColorStop(1,'#070d19');c.fillStyle=g;c.fillRect(0,0,800,800);for(const s of stars){c.globalAlpha=.3+.4*(1+Math.sin(t*.0006+s.x))*.5;c.fillStyle='#c4e7ff';c.beginPath();c.arc(s.x,s.y,s.r,0,7);c.fill()}c.globalAlpha=1;c.strokeStyle='#23364b';c.lineWidth=1;for(const r of [115,230,325]){c.beginPath();c.arc(400,400,r,0,7);c.stroke()}c.setLineDash([3,10]);c.beginPath();c.moveTo(400,30);c.lineTo(400,770);c.moveTo(30,400);c.lineTo(770,400);c.stroke();c.setLineDash([]);c.fillStyle='#263d52';c.beginPath();c.arc(400,400,12,0,7);c.fill();c.strokeStyle='#70e7da55';c.beginPath();c.arc(400,400,22+3*Math.sin(t*.002),0,7);c.stroke();for(const s of ships){const age=Math.min(.12,(Date.now()-stateAt)/1000);c.save();c.translate((s.x+s.vx*age)*5,(s.y+s.vy*age)*5);c.rotate(s.a);if(s.thrust){c.fillStyle=colors[s.slot];c.globalAlpha=.7;c.beginPath();c.moveTo(-12,-6);c.lineTo(-28-Math.random()*12,0);c.lineTo(-12,6);c.fill();c.globalAlpha=1}c.shadowColor=colors[s.slot];c.shadowBlur=22;c.fillStyle=colors[s.slot];c.beginPath();c.moveTo(20,0);c.lineTo(-13,-11);c.lineTo(-7,0);c.lineTo(-13,11);c.closePath();c.fill();c.shadowBlur=0;c.fillStyle='#f7ffff';c.beginPath();c.arc(1,0,3,0,7);c.fill();c.restore();c.fillStyle=colors[s.slot];c.font='12px monospace';c.textAlign='center';c.fillText(names[s.slot].toUpperCase()+(slot===s.slot?' / YOU':''),s.x*5,s.y*5+33)}if(!ships.length){c.textAlign='center';c.fillStyle='#91a4bd';c.font='14px monospace';c.fillText('AWAITING PILOTS',400,510)}c.restore();c.strokeStyle='#39536e';c.lineWidth=2;c.beginPath();c.arc(400,400,365,0,7);c.stroke();requestAnimationFrame(draw)}ui();connect();requestAnimationFrame(draw);
+.arsenal{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:12px}.arsenal button{background:#1c293d;color:#e9f2ff;touch-action:none;user-select:none;text-align:left;font-size:13px;padding:12px}.arsenal button strong{display:block}.arsenal button small{margin:4px 0 0;font:10px monospace;letter-spacing:.4px}.arsenal button.active{background:#70e7da;color:#07131c}.arsenal button[data-action="photon"]{border:1px solid #bc9cff66}.arsenal button[data-action="warp"]{border:1px solid #70e7da66}.hull{margin:14px 0 18px;font:12px monospace;color:#70e7da}.hull meter{display:block;width:100%;height:10px;margin-top:7px;accent-color:#70e7da}.pilot small{margin:0;font-size:10px}.panel{align-self:start}.arsenal button:disabled{opacity:.55}</style></head><body><main><header><div class="brand">SPACE<span>EYE</span></div><div class="tag">FOUR PILOTS · ONE TINY UNIVERSE</div><div class="status" id="network" role="status">Connecting…</div></header><div class="layout"><section><div class="eyebrow">LIVE ORBIT / ATLESQUE</div><h1>Your universe. In miniature.</h1><p>Take a ship. Explore together. Every move lands on the tiny LCD.</p><canvas class="arena" id="arena" width="800" height="800" aria-label="Live shared space arena with up to four ships"></canvas><div class="telemetry"><span id="count">0 / 4 PILOTS</span><span id="lcd">LCD · WAITING</span><span>SECTOR 001</span></div></section><aside class="panel"><div class="eyebrow">FLIGHT DECK</div><h2 id="identity">Ready for launch?</h2><p id="message" role="status">Join from any phone or computer. Four seats, one shared sky.</p><button class="primary" id="join" disabled>Take a ship →</button><button class="secondary" id="leave" hidden>Leave ship</button><div class="hull" id="hull" hidden><span id="hull-label"></span><meter id="hull-meter" min="0" max="100" value="100" aria-label="Ship hull"></meter></div><div class="pilots" id="pilots"></div><div class="eyebrow">MANUAL CONTROLS</div><div class="controls"><button aria-label="Turn left" data-control="left">↶</button><button aria-label="Thrust" data-control="thrust">↑</button><button aria-label="Turn right" data-control="right">↷</button><button aria-label="Brake" data-control="brake">■</button></div><small>← → or A / D to turn<br>↑ or W to thrust · ↓ or S to brake<br>On mobile, hold the flight buttons.<br>Ships bounce on contact. Cross an edge to wrap to the opposite side.</small><div class="eyebrow" style="margin-top:22px">WEAPONS &amp; WARP</div><div class="arsenal"><button data-control="gun" aria-label="Fire guns" disabled><strong>Guns</strong><small>SPACE · HOLD TO FIRE</small></button><button data-action="missile" aria-label="Launch missile" disabled><strong>Missile</strong><small id="cd-missile">M · GUIDED</small></button><button data-action="photon" aria-label="Fire photon torpedo" disabled><strong>Photon torpedo</strong><small id="cd-photon">T · SPLASH DAMAGE</small></button><button data-action="warp" aria-label="Activate warp drive" disabled><strong>Warp drive</strong><small id="cd-warp">SHIFT · JUMP</small></button></div><small>Guns: hold Space · Missile: M<br>Photon torpedo: T · Warp drive: Shift<br>Ships respawn after destruction.</small><small>Invite your crew: <a href="/">spaceeye.atlesque.dev</a></small></aside></div><footer>ATLESQUE EXPERIMENTS &nbsp; / &nbsp; A SMALL WINDOW INTO A SHARED WORLD</footer></main><script>
+const $ = id => document.getElementById(id);
+const colors = ['#70e7da', '#fbb969', '#bc9cff', '#ff789a'], names = ['Comet', 'Nova', 'Orbit', 'Pulsar'];
+let ws, slot = null, ships = [], projectiles = [], effects = [], connected = false;
+let stateAt = 0, lcdAt = 0, serverNow = 0, retry = 500, feedback = '', feedbackUntil = 0;
+const input = { left: false, right: false, thrust: false, brake: false, gun: false }, held = new Set();
+function send(value) { if (ws?.readyState === 1) ws.send(JSON.stringify(value)); }
+function clearControls() {
+  held.clear(); for (const k in input) input[k] = false;
+  document.querySelectorAll('[data-control]').forEach(b => b.classList.remove('active'));
+  send({ type: 'input', ...input });
+}
+function ui() {
+  const me = ships.find(s => s.slot === slot), age = Date.now() - stateAt;
+  $('network').textContent = connected ? '● Connected' : '○ Reconnecting…';
+  $('join').disabled = !connected || ships.length >= 4;
+  $('join').hidden = slot !== null; $('leave').hidden = slot === null;
+  $('identity').textContent = slot === null ? 'Ready for launch?' : names[slot] + ' · Pilot ' + (slot + 1);
+  $('identity').style.color = slot === null ? '' : colors[slot];
+  $('message').textContent = slot === null
+    ? (ships.length >= 4 ? 'All four ships are flying. Watch here until a seat opens.' : 'Join from any phone or computer. Four seats, one shared sky.')
+    : (me?.hp === 0 ? 'Ship destroyed. Respawning in ' + (Math.max(0, me.respawnMs - age) / 1000).toFixed(1) + 's…'
+      : Date.now() < feedbackUntil ? feedback : 'Fly, fight, and jump. Hold guns to fire; heavier weapons recharge.');
+  $('hull').hidden = slot === null;
+  $('hull-label').textContent = 'HULL ' + (me?.hp ?? 100) + '% · ' + (me?.kills ?? 0) + ' KILLS';
+  $('hull-meter').value = me?.hp ?? 100;
+  $('count').textContent = ships.length + ' / 4 PILOTS';
+  $('lcd').textContent = Date.now() - lcdAt < 5000 ? 'LCD · LIVE' : 'LCD · OFFLINE';
+  $('pilots').innerHTML = names.map((n, i) => {
+    const s = ships.find(s => s.slot === i);
+    return '<div class="pilot"><span><i class="dot" style="background:' + colors[i] + '"></i>' + n + '</span><span>'
+      + (s ? (slot === i ? 'YOU · ' : '') + s.hp + '%<small>' + s.kills + ' kills' + (s.hp === 0 ? ' · respawning' : '') + '</small>' : 'OPEN SEAT') + '</span></div>';
+  }).join('');
+  document.querySelectorAll('[data-control]').forEach(b => b.disabled = !connected || slot === null || me?.hp === 0);
+  const hints = { missile: 'M · GUIDED', photon: 'T · SPLASH DAMAGE', warp: 'SHIFT · JUMP' };
+  document.querySelectorAll('[data-action]').forEach(b => {
+    const action = b.dataset.action, remaining = Math.max(0, (me?.cooldowns?.[action] ?? 0) - age);
+    b.disabled = !connected || slot === null || !me || me.hp === 0 || remaining > 0;
+    $('cd-' + action).textContent = remaining > 0 ? 'RECHARGING ' + (remaining / 1000).toFixed(1) + 's' : hints[action];
+  });
+}
+function connect() {
+  ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws');
+  ws.onopen = () => { connected = true; retry = 500; ui(); };
+  ws.onmessage = e => {
+    const m = JSON.parse(e.data);
+    if (m.type === 'welcome' || m.type === 'joined') { slot = m.slot; ui(); }
+    if (m.type === 'state') { ships = m.ships; projectiles = m.projectiles || []; effects = m.effects || []; stateAt = Date.now(); serverNow = m.now; lcdAt = m.lcdAt; ui(); }
+    if (m.type === 'action') {
+      const labels = { gun: 'Guns fired', missile: 'Guided missile launched', photon: 'Photon torpedo launched', warp: 'Warp jump complete' };
+      feedback = m.accepted ? labels[m.action] : 'Weapon recharging or ship unavailable'; feedbackUntil = Date.now() + 1400; ui();
+    }
+    if (m.type === 'error') { feedback = m.message; feedbackUntil = Date.now() + 1400; $('message').textContent = m.message; }
+  };
+  ws.onclose = () => { connected = false; slot = null; clearControls(); ui(); setTimeout(connect, retry); retry = Math.min(8000, retry * 2); };
+  ws.onerror = () => ws.close();
+}
+$('join').onclick = () => send({ type: 'join' });
+$('leave').onclick = () => { clearControls(); send({ type: 'leave' }); slot = null; ui(); };
+const keyMap = { ArrowLeft: 'left', a: 'left', ArrowRight: 'right', d: 'right', ArrowUp: 'thrust', w: 'thrust', ArrowDown: 'brake', s: 'brake', ' ': 'gun' };
+const actions = { m: 'missile', t: 'photon', Shift: 'warp' };
+function update() {
+  for (const k in input) input[k] = [...held].some(v => keyMap[v] === k || v === k);
+  document.querySelectorAll('[data-control]').forEach(b => b.classList.toggle('active', input[b.dataset.control]));
+  if (slot !== null) send({ type: 'input', ...input });
+}
+window.onkeydown = e => {
+  const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  if (slot === null || (!keyMap[key] && !actions[key])) return;
+  e.preventDefault();
+  if (actions[key]) { if (!e.repeat) send({ type: 'action', action: actions[key] }); }
+  else { held.add(key); update(); }
+};
+window.onkeyup = e => { held.delete(e.key.length === 1 ? e.key.toLowerCase() : e.key); update(); };
+window.onblur = clearControls;
+document.addEventListener('visibilitychange', () => { if (document.hidden) clearControls(); });
+document.querySelectorAll('[data-control]').forEach(b => {
+  b.onpointerdown = e => { e.preventDefault(); if (b.disabled) return; b.setPointerCapture(e.pointerId); held.add(b.dataset.control); update(); };
+  b.onpointerup = b.onpointercancel = b.onlostpointercapture = () => { held.delete(b.dataset.control); update(); };
+});
+document.querySelectorAll('[data-action]').forEach(b => b.onclick = () => send({ type: 'action', action: b.dataset.action }));
+setInterval(() => { if (connected && slot !== null) send({ type: 'input', ...input }); }, 50);
+setInterval(() => { if (connected) send({ type: 'ping' }); }, 2000);
+setInterval(ui, 100);
+const c = $('arena').getContext('2d');
+const stars = Array.from({ length: 95 }, (_, i) => ({ x: (i * 73 + 17) % 800, y: (i * 137 + 41) % 800, r: i % 5 === 0 ? 2 : 1 }));
+function draw(t) {
+  c.clearRect(0, 0, 800, 800); c.save(); c.beginPath(); c.arc(400, 400, 365, 0, Math.PI * 2); c.clip();
+  const g = c.createRadialGradient(360, 320, 0, 400, 400, 400);
+  g.addColorStop(0, '#152a3d'); g.addColorStop(.6, '#0d182b'); g.addColorStop(1, '#070d19'); c.fillStyle = g; c.fillRect(0, 0, 800, 800);
+  for (const s of stars) { c.globalAlpha = .3 + .4 * (1 + Math.sin(t * .0006 + s.x)) * .5; c.fillStyle = '#c4e7ff'; c.beginPath(); c.arc(s.x, s.y, s.r, 0, 7); c.fill(); }
+  c.globalAlpha = 1; c.strokeStyle = '#23364b'; c.lineWidth = 1;
+  for (const r of [115, 230, 325]) { c.beginPath(); c.arc(400, 400, r, 0, 7); c.stroke(); }
+  c.setLineDash([3, 10]); c.beginPath(); c.moveTo(400, 30); c.lineTo(400, 770); c.moveTo(30, 400); c.lineTo(770, 400); c.stroke(); c.setLineDash([]);
+  c.fillStyle = '#263d52'; c.beginPath(); c.arc(400, 400, 12, 0, 7); c.fill();
+  const now = serverNow + Date.now() - stateAt, age = Math.min(.12, (Date.now() - stateAt) / 1000);
+  for (const e of effects) {
+    const life = Math.max(0, Math.min(1, (now - e.born) / 1000));
+    if (life >= 1) continue;
+    c.globalAlpha = 1 - life; c.strokeStyle = e.kind === 2 ? '#70e7da' : e.kind === 3 ? '#d2acff' : '#ffb36b';
+    c.lineWidth = e.kind === 2 ? 3 : 2; c.beginPath(); c.arc(e.x * 5, e.y * 5, 5 + life * (e.kind === 3 ? 90 : 50), 0, 7); c.stroke();
+    if (e.kind !== 2) { c.fillStyle = c.strokeStyle; for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4; c.fillRect(e.x * 5 + Math.cos(a) * life * 55, e.y * 5 + Math.sin(a) * life * 55, 3, 3); } }
+  }
+  c.globalAlpha = 1;
+  for (const p of projectiles) {
+    c.save(); c.translate(p.x * 5, p.y * 5); c.rotate(p.a);
+    c.strokeStyle = p.kind === 2 ? '#bc9cff' : p.kind === 1 ? '#fbb969' : colors[p.owner];
+    c.fillStyle = c.strokeStyle; c.shadowColor = c.strokeStyle; c.shadowBlur = p.kind === 2 ? 25 : 10;
+    if (p.kind === 0) { c.lineWidth = 3; c.beginPath(); c.moveTo(-8, 0); c.lineTo(4, 0); c.stroke(); }
+    if (p.kind === 1) { c.beginPath(); c.moveTo(7, 0); c.lineTo(-5, -3); c.lineTo(-5, 3); c.closePath(); c.fill(); c.fillStyle = '#fff2ac'; c.fillRect(-11, -1, 6, 2); }
+    if (p.kind === 2) { c.beginPath(); c.arc(0, 0, 8, 0, 7); c.fill(); c.fillStyle = 'white'; c.beginPath(); c.arc(0, 0, 3, 0, 7); c.fill(); }
+    c.restore();
+  }
+  for (const s of ships) {
+    if (s.hp === 0) continue;
+    c.save(); c.translate((s.x + s.vx * age) * 5, (s.y + s.vy * age) * 5);
+    if (s.shield || s.warp) { c.strokeStyle = colors[s.slot]; c.globalAlpha = .45 + .2 * Math.sin(t * .01); c.lineWidth = 2; c.beginPath(); c.arc(0, 0, s.warp ? 32 : 26, 0, 7); c.stroke(); c.globalAlpha = 1; }
+    c.rotate(s.a);
+    if (s.thrust) { c.fillStyle = colors[s.slot]; c.globalAlpha = .7; c.beginPath(); c.moveTo(-12, -6); c.lineTo(-28 - Math.random() * 12, 0); c.lineTo(-12, 6); c.fill(); c.globalAlpha = 1; }
+    c.shadowColor = colors[s.slot]; c.shadowBlur = 22; c.fillStyle = s.hit ? '#ffffff' : colors[s.slot];
+    c.beginPath(); c.moveTo(20, 0); c.lineTo(-13, -11); c.lineTo(-7, 0); c.lineTo(-13, 11); c.closePath(); c.fill();
+    c.shadowBlur = 0; c.fillStyle = '#f7ffff'; c.beginPath(); c.arc(1, 0, 3, 0, 7); c.fill(); c.restore();
+    c.fillStyle = colors[s.slot]; c.font = '12px monospace'; c.textAlign = 'center';
+    c.fillText(names[s.slot].toUpperCase() + (slot === s.slot ? ' / YOU' : ''), s.x * 5, s.y * 5 + 33);
+    c.fillStyle = '#27394d'; c.fillRect(s.x * 5 - 17, s.y * 5 + 39, 34, 3);
+    c.fillStyle = s.hp > 30 ? colors[s.slot] : '#ff789a'; c.fillRect(s.x * 5 - 17, s.y * 5 + 39, 34 * s.hp / 100, 3);
+  }
+  if (!ships.length) { c.textAlign = 'center'; c.fillStyle = '#91a4bd'; c.font = '14px monospace'; c.fillText('AWAITING PILOTS', 400, 510); }
+  c.restore(); c.strokeStyle = '#39536e'; c.lineWidth = 2; c.beginPath(); c.arc(400, 400, 365, 0, 7); c.stroke(); requestAnimationFrame(draw);
+}
+ui(); connect(); requestAnimationFrame(draw);
 </script></body></html>
