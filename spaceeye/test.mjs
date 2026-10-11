@@ -4,11 +4,18 @@ const mf=new Miniflare(convertV4MiniflareOptions({modules:true,scriptPath:new UR
 const base='http://localhost';
 const clients=[];
 const delay=ms=>new Promise(r=>setTimeout(r,ms));
-async function connect(){const r=await mf.dispatchFetch(base+'/ws',{headers:{Upgrade:'websocket',Origin:base}});assert.equal(r.status,101);const ws=r.webSocket;const messages=[];ws.accept();ws.addEventListener('message',e=>messages.push(JSON.parse(e.data)));clients.push({ws,messages});return clients.at(-1)}
+async function connect(path='/ws'){const r=await mf.dispatchFetch(base+path,{headers:{Upgrade:'websocket',Origin:base}});assert.equal(r.status,101);const ws=r.webSocket;const messages=[];ws.accept();ws.addEventListener('message',e=>messages.push(JSON.parse(e.data)));clients.push({ws,messages});return clients.at(-1)}
 async function wait(c,type){for(let i=0;i<100;i++){const index=c.messages.findIndex(m=>m.type===type);if(index>=0)return c.messages.splice(index,1)[0];await delay(10)}throw Error('Missing '+type)}
 try{
  assert.equal((await mf.dispatchFetch(base+'/health')).status,200);
  assert.equal((await mf.dispatchFetch(base+'/ws',{headers:{Upgrade:'websocket',Origin:'https://other.example'}})).status,403);
+ const display=await connect('/ws?lcd=1');await wait(display,'welcome');
+ const firstDisplayState=await wait(display,'state');assert.ok(firstDisplayState.lcdAt>0);
+ await delay(50);display.ws.send(JSON.stringify({type:'ping'}));
+ const refreshedDisplayState=await wait(display,'state');assert.equal(refreshedDisplayState.type,'state');
+ assert.ok((await (await mf.dispatchFetch(base+'/state')).json()).lcdAt>firstDisplayState.lcdAt);
+ assert.equal('lcdAt' in refreshedDisplayState,false,'LCD stream omits browser-only metadata');
+ display.ws.close();clients.pop();await delay(50);
  for(let i=0;i<5;i++){const c=await connect();await wait(c,'welcome');c.ws.send(JSON.stringify({type:'join'}));const m=await wait(c,i===4?'error':'joined');if(i<4)assert.equal(m.slot,i)}
  let state=await (await mf.dispatchFetch(base+'/state')).json();assert.equal(state.ships.length,4);
  const start=state.ships.find(s=>s.slot===0);

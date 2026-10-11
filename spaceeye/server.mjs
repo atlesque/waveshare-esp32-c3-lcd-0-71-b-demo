@@ -35,8 +35,21 @@ export class SpaceRoom extends DurableObject {
       })) };
   }
   broadcast() {
-    const value = JSON.stringify(this.state());
-    for (const { ws } of this.sessions()) { try { ws.send(value); } catch { ws.close(1011, 'Connection error'); } }
+    const state = this.state(), value = JSON.stringify(state);
+    // Multiple pilots can produce 80 broadcasts/sec. The LCD only needs the
+    // newest motion state; keep its TLS connection from accumulating old frames.
+    const lcdValue = JSON.stringify({ type: 'state', now: state.now,
+      ships: state.ships.map(({ slot, x, y, a, vx, vy, thrust, hp, shield, warp }) =>
+        ({ slot, x, y, a, vx, vy, thrust, hp, shield, warp })),
+      projectiles: state.projectiles.map(({ kind, owner, target, x, y, a }) => ({ kind, owner, target, x, y, a })),
+      effects: state.effects.map(({ kind, slot, x, y, born }) => ({ kind, slot, x, y, born })) });
+    for (const { ws, data } of this.sessions()) {
+      if (data.lcd && state.now - (data.lcdSentAt ?? 0) < 33) continue;
+      try {
+        ws.send(data.lcd ? lcdValue : value);
+        if (data.lcd) { data.lcdSentAt = state.now; ws.serializeAttachment(data); }
+      } catch { ws.close(1011, 'Connection error'); }
+    }
   }
   async fetch(request) {
     const url = new URL(request.url); this.advance();
@@ -58,7 +71,9 @@ export class SpaceRoom extends DurableObject {
     if (request.headers.get('Origin') !== url.origin) return new Response('Origin rejected', { status: 403 });
     if (this.sessions().length >= 20) return new Response('Room at capacity', { status: 503 });
     const [client, server] = Object.values(new WebSocketPair()); this.ctx.acceptWebSocket(server);
-    server.serializeAttachment({ slot: null, lastMessage: 0, inputAt: 0, input: {} });
+    const lcd = url.searchParams.get('lcd') === '1';
+    if (lcd) this.lcdAt = Date.now();
+    server.serializeAttachment({ slot: null, lastMessage: 0, inputAt: 0, input: {}, lcd });
     server.send(JSON.stringify({ type: 'welcome', slot: null, version: 3 })); server.send(JSON.stringify(this.state()));
     return new Response(null, { status: 101, webSocket: client });
   }
@@ -69,6 +84,7 @@ export class SpaceRoom extends DurableObject {
     let s = ws.deserializeAttachment(); const now = Date.now();
     if ((m.type === 'input' || m.type === 'ping') && now - s.lastMessage < 25) return;
     this.advance(); s = ws.deserializeAttachment(); s.lastMessage = now;
+    if (s.lcd) this.lcdAt = now;
     if (m.type === 'join' && s.slot === null) {
       const used = this.state().ships.map(s => s.slot), slot = [0, 1, 2, 3].find(i => !used.includes(i));
       if (slot === undefined) { ws.send(JSON.stringify({ type: 'error', message: 'All four seats are taken.' })); return; }
