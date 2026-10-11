@@ -25,7 +25,7 @@ The fallback HTTP endpoint `/lcd?v=2` remains available for older firmware. Prot
 
 ## Source and deployment
 
-- `spaceeye/index.html`: browser interface and controls.
+- `spaceeye/index.html`: single-screen mobile HUD (pilots, hull, arena, flight and weapon buttons).
 - `spaceeye/server.mjs`: shared game and LCD protocol.
 - `spaceeye/simulation.mjs`: weapons, cooldowns, damage, respawns and combat effects.
 - `spaceeye/physics.mjs`: ship movement, collisions and circular map wrapping.
